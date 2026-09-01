@@ -256,7 +256,7 @@ if st.session_state.fintech_ejecutado:
         <div class="cta-banner">
             <h3 style="color: white; margin:0 0 8px 0;">🚀 ¿Listo para desplegar este Agente en tu infraestructura Fintech?</h3>
             <p style="color: #94A3B8; margin:0 0 5px 0; font-size: 15px;">Automatiza la conciliación y blindaje antifraude con las soluciones inteligentes de Sabertec AI.</p>
-            <p style="color: #CBD5E1; margin:0; font-size: 13px;">Contáctanos en <b>contacto@sabertec.com</b></p>
+            <p style="color: #CBD5E1; margin:0; font-size: 13px;">Contáctanos en <b>contacto@sabertec.agency</b></p>
         </div>
     """, unsafe_allow_html=True)
     
