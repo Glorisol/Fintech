@@ -61,13 +61,18 @@ st.markdown("""
 st.markdown('<p class="main-title">💳 Sabertec AI: Agente de Monitoreo & Prevención de Fraude Fintech</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">Análisis de transacciones en tiempo real, scoring de riesgo y conciliación automatizada</p>', unsafe_allow_html=True)
 
-# Sidebar para controles de la arquitectura
-st.sidebar.header("⚙️ Configuración del Agente Fintech")
+# Sidebar para controles de la arquitectura de demostración
+st.sidebar.header("⚙️ Configuración del Demo")
+st.sidebar.info("ℹ️ **Modo Demostración Activo:** El prompt se encuentra preconfigurado para este escenario fintech.")
+
+# Prompt fijo de demostración bloqueado (idéntico al enfoque de retail)
+prompt_demo_fintech = "Monitorear flujos transaccionales, detectar patrones de lavado de dinero (AML) y bloquear operaciones de alto riesgo en pasarelas de pago."
 
 instruccion_usuario = st.sidebar.text_area(
-    "💬 Prompt o Instrucción para el Agente:",
-    placeholder="Ej. Auditar pasarelas de pago y detectar anomalías en transferencias internacionales...",
-    value="Monitorear flujos transaccionales, detectar patrones de lavado de dinero (AML) y bloquear operaciones de alto riesgo."
+    "💬 Prompt Preconfigurado del Agente:",
+    value=prompt_demo_fintech,
+    height=130,
+    disabled=True
 )
 
 num_transacciones = st.sidebar.slider("Transacciones a Auditar", 100, 1000, 400, 50)
@@ -102,7 +107,7 @@ if st.session_state.fintech_ejecutado:
                 client = genai.Client()
                 _ = client.models.generate_content(
                     model="gemini-2.5-flash",
-                    contents=instruccion_usuario,
+                    contents=prompt_demo_fintech,
                 )
             except Exception:
                 pass
@@ -141,7 +146,7 @@ if st.session_state.fintech_ejecutado:
     st.markdown(f"""
         <div class="prompt-container">
             <h4 style="margin:0; color:#1D4ED8;">🎯 Prompt Aplicado por el Analista (Capa 2)</h4>
-            <p style="margin:5px 0 0 0; font-size: 15px; color:#1E293B; font-style: italic;">"{instruccion_usuario}"</p>
+            <p style="margin:5px 0 0 0; font-size: 15px; color:#1E293B; font-style: italic;">"{prompt_demo_fintech}"</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -299,7 +304,7 @@ if st.session_state.fintech_ejecutado:
         
         story.append(Paragraph("Resumen Ejecutivo", section_style))
         story.append(Paragraph(f"El agente autónomo procesó el flujo de {num_transacciones} operaciones, segmentando de forma independiente los casos de revisión por cumplimiento (KYC) y las alertas críticas de fraude potencial.", body_style))
-        story.append(Paragraph(f"Prompt Aplicado: {instruccion_usuario}", body_style))
+        story.append(Paragraph(f"Prompt Aplicado: {prompt_demo_fintech}", body_style))
         story.append(Spacer(1, 4))
         
         # --- MATRIZ 1: EN REVISIÓN KYC (Sin columna redundante) ---
@@ -380,4 +385,4 @@ if st.session_state.fintech_ejecutado:
         )
 
 else:
-    st.info("👉 Ingresa tu instrucción en la barra lateral, ajusta los parámetros de transacciones y haz clic en **'Ejecutar Ciclo Autónomo Fintech'** para iniciar el análisis.")
+    st.info("👉 Haz clic en **'Ejecutar Ciclo Autónomo Fintech'** en la barra lateral para iniciar el análisis del demo.")
