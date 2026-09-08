@@ -6,3 +6,4 @@ reportlab
 xlsxwriter
 matplotlib
 openpyxl
+streamlit-autorefresh
