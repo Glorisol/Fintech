@@ -4,18 +4,18 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import io
-import streamlit as st
-from streamlit_autorefresh import st_autorefresh
-
-# Refresca la aplicación cada 10 minutos (600,000 milisegundos)
-# Esto mantiene la sesión de Python viva
-st_autorefresh(interval=600000, limit=None, key="mantenimiento_activo")
 
 # Importaciones de ReportLab para la Capa 3 (Dictamen PDF)
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+import streamlit as st
+from streamlit_autorefresh import st_autorefresh
+
+# Refresca la aplicación cada 10 minutos (600,000 milisegundos)
+# Esto mantiene la sesión de Python viva
+st_autorefresh(interval=600000, limit=None, key="mantenimiento_activo")
 
 # Importación segura de la API de Google GenAI
 try:
