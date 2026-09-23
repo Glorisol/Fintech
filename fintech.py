@@ -1,394 +1,251 @@
-import time
 import streamlit as st
+from google import genai
+from google.genai import types
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+import plotly.express as px
 import io
+from datetime import datetime
 
-# Importaciones de ReportLab para la Capa 3 (Dictamen PDF)
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-import streamlit as st
-from streamlit_autorefresh import st_autorefresh
-
-# Refresca la aplicación cada 10 minutos (600,000 milisegundos)
-# Esto mantiene la sesión de Python viva
-st_autorefresh(interval=600000, limit=None, key="mantenimiento_activo")
-
-# Importación segura de la API de Google GenAI
-try:
-    from google import genai
-    HAS_GENAI = True
-except ImportError:
-    HAS_GENAI = False
-
+# Configuración de la página de Streamlit
 st.set_page_config(
-    page_title="Sabertec AI - Agente de Auditoría Fintech & Fraude",
-    page_icon="💳",
+    page_title="Sabertec AI: Dictamen de Riesgo Corporativo",
+    page_icon="🛡️",
     layout="wide"
 )
 
-# Estilos CSS avanzados inspirados en banca digital y ciberseguridad
+# Estilo CSS para alinear el título principal centrado, en letra grande
 st.markdown("""
     <style>
-    .main-title { font-size: 28px; font-weight: bold; color: #0F172A; }
-    .sub-title { font-size: 16px; color: #475569; margin-bottom: 20px; }
-    .metric-card { background-color: #F8FAFC; padding: 15px; border-radius: 8px; border: 1px solid #E2E8F0; text-align: center; }
-    .prompt-container {
-        background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%);
-        border-left: 6px solid #3B82F6;
-        padding: 18px;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        margin-bottom: 20px;
-    }
-    .executive-card {
-        background-color: #F0FDF4;
-        border-left: 6px solid #22C55E;
-        padding: 15px;
-        border-radius: 8px;
-        margin-bottom: 15px;
-    }
-    .cta-banner {
-        background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
-        color: white;
-        padding: 24px;
-        border-radius: 10px;
+    .titulo-principal {
+        font-size: 26px;
+        font-weight: bold;
         text-align: center;
-        margin-top: 20px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        width: 100%;
+        margin-bottom: 30px;
     }
     </style>
+    <div class="titulo-principal">DICTAMEN DE AUDITORÍA Y EVALUACIÓN DE RIESGO FINANCIERO</div>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="main-title">💳 Sabertec AI: Agente de Monitoreo & Prevención de Fraude Fintech</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Análisis de transacciones en tiempo real, scoring de riesgo y conciliación automatizada</p>', unsafe_allow_html=True)
+HAS_GENAI = True
 
-# Sidebar para controles de la arquitectura de demostración
-st.sidebar.header("⚙️ Configuración del Demo")
-st.sidebar.info("ℹ️ **Modo Demostración Activo:** El prompt se encuentra preconfigurado para este escenario fintech.")
+# Definición de Herramientas corporativas para el Agente
+def auditar_riesgo_corporativo(volumen_total: float = 52475.00, exposicion_riesgo: float = 41550.00) -> dict:
+    """Retorna los datos consolidados de la auditoría de pasarelas y riesgo crediticio corporativo."""
+    return {
+        "volumen_total": volumen_total,
+        "exposicion_total": exposicion_riesgo,
+        "disputas_retenidas": 32500.00,
+        "inconsistencias_stripe": 9050.00,
+        "usuarios_alto_riesgo": 15,
+        "estado": "Completado con contingencia crítica"
+    }
 
-# Prompt fijo de demostración bloqueado (idéntico al enfoque de retail)
-prompt_demo_fintech = "Monitorear flujos transaccionales, detectar patrones de lavado de dinero (AML) y bloquear operaciones de alto riesgo en pasarelas de pago."
+def aplicar_bloqueo_preventivo(usuarios_ids: list) -> dict:
+    """Aplica bloqueo preventivo e inmovilización de fondos a los usuarios en matriz de alto riesgo."""
+    return {
+        "usuarios_afectados": usuarios_ids,
+        "estado": "BLOQUEO_PREVENTIVO_EJECUTADO",
+        "mensaje": "Se ha detenido la propagación de nuevos contracargos con éxito."
+    }
 
-instruccion_usuario = st.sidebar.text_area(
-    "💬 Prompt Preconfigurado del Agente:",
-    value=prompt_demo_fintech,
-    height=130,
-    disabled=True
+# Configuración en Sidebar
+st.sidebar.header("⚙️ Configuración del Módulo")
+prompt_usuario = st.sidebar.text_area(
+    "💬 Objetivo de Auditoría Corporativa:",
+    value="Ejecuta la auditoría integral de pasarelas y riesgo crediticio corporativo. Identifica las vulnerabilidades en Zelle, PayPal, Stripe y genera el dictamen ejecutivo junto con las recomendaciones de mitigación.",
+    height=140
 )
 
-num_transacciones = st.sidebar.slider("Transacciones a Auditar", 100, 1000, 400, 50)
-umbral_fraude = st.sidebar.slider("Umbral de Alerta de Riesgo (Score)", 50, 95, 75, 5)
+run_agent = st.sidebar.button("🚀 Ejecutar Auditoría Corporativa")
 
-run_button = st.sidebar.button("🚀 Ejecutar Ciclo Autónomo Fintech")
+# Inicializamos estados en sesión
+if "df_usuarios" not in st.session_state:
+    st.session_state.df_usuarios = None
+if "df_pasarelas" not in st.session_state:
+    st.session_state.df_pasarelas = None
+if "response_text" not in st.session_state:
+    st.session_state.response_text = None
+if "fecha_actual" not in st.session_state:
+    st.session_state.fecha_actual = None
 
-if "fintech_ejecutado" not in st.session_state:
-    st.session_state.fintech_ejecutado = False
-
-if run_button:
-    st.session_state.fintech_ejecutado = True
-
-if st.session_state.fintech_ejecutado:
-    if run_button:
-        progress_text = st.empty()
-        progress_bar = st.progress(0)
-        
-        phases = [
-            ("🧠 Capa 2 - Razonamiento: Evaluando modelos de comportamiento transaccional...", 30),
-            ("🛠️ Capa 2 - Tool Calling: Consultando logs de pasarela de pagos y base SQL...", 60),
-            ("📋 Capa 3 - Dictamen: Compilando informe ejecutivo antifraude...", 100)
-        ]
-        
-        for text, percent in phases:
-            progress_text.markdown(f"**{text}**")
-            progress_bar.progress(percent)
-            time.sleep(0.1)
-            
-        if HAS_GENAI:
+if run_agent:
+    if not HAS_GENAI:
+        st.error("⚠️ La librería `google-genai` no está instalada o configurada correctamente.")
+    else:
+        with st.spinner("🛡️ Analizando pasarelas de pago, disputas y perfiles de riesgo corporativo..."):
             try:
-                client = genai.Client()
-                _ = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=prompt_demo_fintech,
+                # Inicializar cliente de Google GenAI
+                client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+
+                # Configuración del motor con las funciones inyectadas como herramientas
+                config = types.GenerateContentConfig(
+                    tools=[auditar_riesgo_corporativo, aplicar_bloqueo_preventivo],
+                    system_instruction=(
+                        "Eres un sistema experto en auditoría senior automática de riesgo crediticio y pasarelas de pago para Sabertec. "
+                        "Analiza los objetivos del negocio y genera un dictamen ejecutivo formal, estructurado con: "
+                        "1. Resumen Ejecutivo Financiero. "
+                        "2. Análisis de Vulnerabilidades en Pasarelas (Zelle, PayPal, Stripe, Pago Móvil). "
+                        "3. Matriz de Riesgo Crediticio de Usuarios. "
+                        "4. Recomendaciones Obligatorias de Mitigación. "
+                        "IMPORTANTE: Redacta únicamente el cuerpo del dictamen. No repitas el título principal de la interfaz."
+                    ),
+                    temperature=0.2
                 )
-            except Exception:
-                pass
 
-        progress_text.markdown("✅ **¡Ejecución completada con éxito por el Agente Fintech de Sabertec AI!**")
-        time.sleep(0.15)
-        progress_bar.empty()
-        progress_text.empty()
+                chat = client.chats.create(model="gemini-3.6-flash", config=config)
+                response = chat.send_message(prompt_usuario)
 
-    # Capa 1 y 2: ETL estocástico e independiente para Finanzas
-    np.random.seed(None)
-    canales = ["App Móvil", "API Gateway", "POS Físico", "Checkout Web", "Banca por Internet"]
+                st.session_state.response_text = response.text
+                
+                # Fecha actual formateada en español
+                meses = {
+                    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
+                    7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+                }
+                ahora = datetime.now()
+                st.session_state.fecha_actual = f"{ahora.day} de {meses[ahora.month]} de {ahora.year}"
+
+                # Generación de Dataframes basados exactamente en el documento adjunto
+                # 1. Datos de Pasarelas
+                data_pasarelas = [
+                    {"Pasarela": "Zelle", "Monto en Riesgo / Disputa ($)": 21000.00, "Estado Operativo": "Disputa por Fraude (Crítico)", "Severidad": "Alta"},
+                    {"Pasarela": "PayPal", "Monto en Riesgo / Disputa ($)": 11500.00, "Estado Operativo": "Disputas Activas / Reincidencia", "Severidad": "Alta"},
+                    {"Pasarela": "Stripe", "Monto en Riesgo / Disputa ($)": 9050.00, "Estado Operativo": "Inconsistencia de Conciliación", "Severidad": "Media"},
+                    {"Pasarela": "Pago Móvil", "Monto en Riesgo / Disputa ($)": 0.00, "Estado Operativo": "Operatividad Regular (Conforme)", "Severidad": "Baja"}
+                ]
+                st.session_state.df_pasarelas = pd.DataFrame(data_pasarelas)
+
+                # 2. Datos de Usuarios (Matriz de Riesgo del Dictamen)
+                usuarios_data = [
+                    # Bloque Zelle
+                    {"ID Usuario": "USR-207", "Pasarela": "Zelle", "Score Crediticio": 390, "Ingreso Mensual ($)": 1100, "Segmento": "Alto Riesgo (Fraude)", "Estado": "Disputa Activa"},
+                    {"ID Usuario": "USR-217", "Pasarela": "Zelle", "Score Crediticio": 390, "Ingreso Mensual ($)": 1050, "Segmento": "Alto Riesgo (Fraude)", "Estado": "Disputa Activa"},
+                    {"ID Usuario": "USR-227", "Pasarela": "Zelle", "Score Crediticio": 390, "Ingreso Mensual ($)": 1150, "Segmento": "Alto Riesgo (Fraude)", "Estado": "Disputa Activa"},
+                    {"ID Usuario": "USR-237", "Pasarela": "Zelle", "Score Crediticio": 390, "Ingreso Mensual ($)": 980, "Segmento": "Alto Riesgo (Fraude)", "Estado": "Disputa Activa"},
+                    {"ID Usuario": "USR-247", "Pasarela": "Zelle", "Score Crediticio": 390, "Ingreso Mensual ($)": 1200, "Segmento": "Alto Riesgo (Fraude)", "Estado": "Disputa Activa"},
+                    # Bloque PayPal
+                    {"ID Usuario": "USR-202", "Pasarela": "PayPal", "Score Crediticio": 410, "Ingreso Mensual ($)": 1180, "Segmento": "Alto Riesgo (Fraude)", "Estado": "Disputa Activa"},
+                    {"ID Usuario": "USR-212", "Pasarela": "PayPal", "Score Crediticio": 410, "Ingreso Mensual ($)": 1120, "Segmento": "Alto Riesgo (Fraude)", "Estado": "Disputa Activa"},
+                    {"ID Usuario": "USR-222", "Pasarela": "PayPal", "Score Crediticio": 410, "Ingreso Mensual ($)": 1190, "Segmento": "Alto Riesgo (Fraude)", "Estado": "Disputa Activa"},
+                    {"ID Usuario": "USR-232", "Pasarela": "PayPal", "Score Crediticio": 410, "Ingreso Mensual ($)": 1090, "Segmento": "Alto Riesgo (Fraude)", "Estado": "Disputa Activa"},
+                    {"ID Usuario": "USR-242", "Pasarela": "PayPal", "Score Crediticio": 410, "Ingreso Mensual ($)": 1150, "Segmento": "Alto Riesgo (Fraude)", "Estado": "Disputa Activa"},
+                    # Bloque Stripe
+                    {"ID Usuario": "USR-204", "Pasarela": "Stripe", "Score Crediticio": 350, "Ingreso Mensual ($)": 950, "Segmento": "Alto Riesgo (Inconsistencia)", "Estado": "Rechazada / Liquidada Errónea"},
+                    {"ID Usuario": "USR-214", "Pasarela": "Stripe", "Score Crediticio": 350, "Ingreso Mensual ($)": 920, "Segmento": "Alto Riesgo (Inconsistencia)", "Estado": "Rechazada / Liquidada Errónea"},
+                    {"ID Usuario": "USR-224", "Pasarela": "Stripe", "Score Crediticio": 350, "Ingreso Mensual ($)": 990, "Segmento": "Alto Riesgo (Inconsistencia)", "Estado": "Rechazada / Liquidada Errónea"},
+                    {"ID Usuario": "USR-234", "Pasarela": "Stripe", "Score Crediticio": 350, "Ingreso Mensual ($)": 900, "Segmento": "Alto Riesgo (Inconsistencia)", "Estado": "Rechazada / Liquidada Errónea"},
+                    {"ID Usuario": "USR-244", "Pasarela": "Stripe", "Score Crediticio": 350, "Ingreso Mensual ($)": 940, "Segmento": "Alto Riesgo (Inconsistencia)", "Estado": "Rechazada / Liquidada Errónea"},
+                ]
+                st.session_state.df_usuarios = pd.DataFrame(usuarios_data)
+
+            except Exception as e:
+                error_str = str(e)
+                if "503" in error_str or "UNAVAILABLE" in error_str:
+                    st.warning("⚠️ El servicio de IA está experimentando alta demanda. Espera unos segundos y vuelve a hacer clic en 'Ejecutar Auditoría Corporativa'.")
+                elif "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                    st.warning("⚠️ Se ha superado temporalmente el límite de cuota (Error 429). Espera un momento antes de reintentar.")
+                else:
+                    st.error(f"Error durante la ejecución del agente: {e}")
+
+# Renderizado del Dashboard y Dictamen si existen datos
+if st.session_state.df_usuarios is not None:
     
-    data = {
-        "Tx_ID": [f"TX-{90000 + i}" for i in range(num_transacciones)],
-        "Fecha_Hora": pd.date_range(start="2026-08-01", periods=num_transacciones, freq="min"),
-        "Fecha_Liquidacion": pd.date_range(start="2026-08-02", periods=num_transacciones, freq="h"),
-        "Monto_USD": np.round(np.random.uniform(15.0, 8500.0, num_transacciones), 2),
-        "Score_Riesgo": np.round(np.random.uniform(5, 99, num_transacciones), 1),
-        "Canal": np.random.choice(canales, num_transacciones),
-    }
-    df = pd.DataFrame(data)
+    st.markdown("### 📊 Panel de Control: Indicadores Clave de Riesgo (KPIs)")
     
-    # Clasificación dinámica independiente basada en el score de riesgo
-    df["Estatus_Tx"] = np.where(df["Score_Riesgo"] > umbral_fraude, "CRITICO_FRAUDE", 
-                       np.where(df["Score_Riesgo"] > 45, "REVISION_KYC", "APROBADO"))
-
-    df_revision = df[df["Estatus_Tx"] == "REVISION_KYC"].copy()
-    df_critico = df[df["Estatus_Tx"] == "CRITICO_FRAUDE"].copy()
-    
-    rev_count = len(df_revision)
-    crit_count = len(df_critico)
-    monto_expuesto = df_critico["Monto_USD"].sum()
-
-    # Contenedor Visual del Prompt Aplicado
-    st.markdown(f"""
-        <div class="prompt-container">
-            <h4 style="margin:0; color:#1D4ED8;">🎯 Prompt Aplicado por el Analista (Capa 2)</h4>
-            <p style="margin:5px 0 0 0; font-size: 15px; color:#1E293B; font-style: italic;">"{prompt_demo_fintech}"</p>
-        </div>
-    """, unsafe_allow_html=True)
-
-    # 1. Resumen Ejecutivo y Metadatos
-    st.markdown("## 📋 1. Resumen Ejecutivo & Auditoría de Pagos")
-    meta_col1, meta_col2, meta_col3 = st.columns(3)
-    with meta_col1:
-        st.markdown(f"**Fecha de Auditoría:** 30 de Agosto, 2026")
-        st.markdown(f"**Motor Agente:** Google GenAI (Fintech Core)")
-    with meta_col2:
-        st.markdown(f"**Transacciones Analizadas:** {num_transacciones}")
-        st.markdown(f"**Umbral de Alerta Score:** {umbral_fraude}/100")
-    with meta_col3:
-        st.markdown(f"**Estado del Pipeline:** Seguro / Encriptado")
-        st.markdown(f"**Nivel de Confianza AML:** 99.8%")
-
-    st.markdown("""
-    <div class="executive-card">
-        <p style="margin:0; color:#166534;"><b>Dictamen General:</b> El agente autónomo procesó el flujo transaccional completo. Se identificaron desvíos por patrones de velocidad y montos inusuales que exigen retención preventiva de fondos.</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # KPIs Principales con totales independientes reales
+    # Tarjetas de Métricas Principales (KPI Cards)
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.markdown(f'<div class="metric-card"><h4>Total Transacciones</h4><h3>{len(df)}</h3></div>', unsafe_allow_html=True)
+        st.metric(label="Volumen Total Auditado", value="$52,475.00", delta="100% Base")
     with col2:
-        st.markdown(f'<div class="metric-card"><h4>En Revisión (KYC)</h4><h3>{rev_count}</h3></div>', unsafe_allow_html=True)
+        st.metric(label="Exposición Total al Riesgo", value="$41,550.00", delta="79.1% del Volumen", delta_color="inverse")
     with col3:
-        st.markdown(f'<div class="metric-card"><h4>Críticos (Fraude)</h4><h3>{crit_count}</h3></div>', unsafe_allow_html=True)
+        st.metric(label="Fondos Retenidos (Disputas)", value="$32,500.00", delta="61.9% sin liquidar", delta_color="inverse")
     with col4:
-        st.markdown(f'<div class="metric-card"><h4>Monto en Riesgo</h4><h3>${monto_expuesto:,.2f}</h3></div>', unsafe_allow_html=True)
+        st.metric(label="Inconsistencia Contable", value="$9,050.00", delta="Brecha Stripe", delta_color="inverse")
 
     st.markdown("---")
-    
-    # 2. Análisis Visual de Riesgos
-    st.markdown("## 📊 2. Distribución de Riesgos por Canal de Pago")
-    col_a, col_b = st.columns([1.2, 1])
-    
-    with col_a:
-        st.subheader("Volumetría por Estatus Operativo")
-        estado_counts = df["Estatus_Tx"].value_counts()
-        fig, ax = plt.subplots(figsize=(6, 3.2))
-        estado_counts.plot(kind="bar", color=["#16A34A", "#CA8A04", "#DC2626"], ax=ax)
-        ax.set_ylabel("Cantidad de Operaciones", fontsize=9, fontweight='bold', color="#0F172A")
-        ax.set_xlabel("Estatus Transaccional", fontsize=9, fontweight='bold', color="#0F172A")
-        plt.xticks(rotation=0)
-        st.pyplot(fig)
+
+    # Gráficos del Dashboard Corporativo en 2 columnas
+    col_g1, col_g2 = st.columns(2)
+
+    with col_g1:
+        st.subheader("💳 Vulnerabilidades y Riesgo por Pasarela ($)")
+        fig_pasarelas = px.bar(
+            st.session_state.df_pasarelas,
+            x="Pasarela",
+            y="Monto en Riesgo / Disputa ($)",
+            color="Pasarela",
+            text="Monto en Riesgo / Disputa ($)",
+            color_discrete_map={
+                "Zelle": "#e74c3c",      # Rojo crítico
+                "PayPal": "#f39c12",     # Naranja
+                "Stripe": "#3498db",     # Azul
+                "Pago Móvil": "#27ae60"  # Verde seguro
+            }
+        )
+        fig_pasarelas.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=320, showlegend=False)
+        st.plotly_chart(fig_pasarelas, use_container_width=True)
+
+    with col_g2:
+        st.subheader("🎯 Concentración de Usuarios en Alto Riesgo")
+        conteo_segmentos = st.session_state.df_usuarios["Pasarela"].value_counts().reset_index()
+        conteo_segmentos.columns = ["Pasarela", "Cantidad de Usuarios"]
         
-    with col_b:
-        st.subheader("Lectura del Comportamiento")
-        st.write("Las pasarelas abiertas a través de API Gateway concentran el mayor puntaje de riesgo, indicando posibles intentos de ataques automatizados o tarjetas comprometidas.")
+        fig_usuarios = px.pie(
+            conteo_segmentos,
+            names="Pasarela",
+            values="Cantidad de Usuarios",
+            hole=0.4,
+            color="Pasarela",
+            color_discrete_map={"Zelle": "#e74c3c", "PayPal": "#f39c12", "Stripe": "#3498db"}
+        )
+        fig_usuarios.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=320)
+        st.plotly_chart(fig_usuarios, use_container_width=True)
 
     st.markdown("---")
 
-    # 3. Alertas de Seguridad
-    st.markdown("## 🚨 3. Alertas de Cumplimiento & Prevención de Fraude")
-    crit_1, crit_2 = st.columns(2)
-    with crit_1:
-        st.error(f"⚠️ **Alerta AML:** Se detectaron transacciones con puntaje de riesgo superior a {umbral_fraude} que superan los parámetros de validación habituales.")
-    with crit_2:
-        st.error("🛑 **Acción Preventiva:** Congelamiento automático de las cuentas asociadas a las operaciones críticas hasta completar la verificación de identidad.")
-
-    st.markdown("---")
-
-    # 4. Escrutinio Completo en Pantalla
-    st.markdown("## 📋 4. Escrutinio Transaccional Detallado")
-    st.write(f"Explora la bitácora completa de las **{num_transacciones}** operaciones auditadas:")
-
-    filtro_estatus = st.selectbox(
-        "🔍 Filtrar Bitácora por Estatus:",
-        ["TODOS", "APROBADO", "REVISION_KYC", "CRITICO_FRAUDE"]
-    )
-
-    if filtro_estatus == "TODOS":
-        df_filtrado = df
-    else:
-        df_filtrado = df[df["Estatus_Tx"] == filtro_estatus]
-
-    st.caption(f"Mostrando **{len(df_filtrado)}** registros de un total de **{len(df)}** operaciones.")
-
-    def color_fintech(val):
-        if val == "APROBADO":
-            return 'background-color: #DCFCE7; color: #166534; font-weight: bold;'
-        elif val == "REVISION_KYC":
-            return 'background-color: #FEF9C3; color: #854D0E; font-weight: bold;'
-        elif val == "CRITICO_FRAUDE":
-            return 'background-color: #FEE2E2; color: #991B1B; font-weight: bold;'
-        return ''
-
-    try:
-        df_styled = df_filtrado.style.map(color_fintech, subset=['Estatus_Tx'])
-    except AttributeError:
-        df_styled = df_filtrado.style.applymap(color_fintech, subset=['Estatus_Tx'])
-        
-    st.dataframe(df_styled, use_container_width=True, height=400)
-
-    st.markdown("---")
-
-    # 5. Plan de Acción Fintech
-    st.markdown("## 🛠️ 5. Plan de Acción y Mitigación de Riesgos")
-    st.markdown("""
-    * **Verificación Dinámica (3D Secure):** Reforzar autenticación de doble factor (2FA) en pasarelas con score elevado.
-    * **Monitoreo 24/7:** Ejecución continua del agente autónomo sobre la base de datos transaccional.
-    * **Reportes Regulatorios:** Preparación automatizada de archivos de cumplimiento para la Unidad de Inteligencia Financiera.
+    # Renderizado del Dictamen Formal en Texto generado por la IA
+    st.markdown("### 📑 Dictamen Ejecutivo de Auditoría")
+    st.markdown(f"""
+    - **Destinatario:** Dirección General y Comité de Riesgos de Sabertec
+    - **Emisor:** Auditoría Senior Automática de Riesgo Crediticio y Pasarelas
+    - **Estado de Auditoría:** Completado con Contingencia Crítica
+    - **Fecha de Emisión:** {st.session_state.fecha_actual}
     """)
 
-    # 6. Zona de Descarga (Excel & Dictamen PDF de Capa 3)
+    st.markdown(st.session_state.response_text)
+
+    # Sección Interactiva de la Matriz de Usuarios y Descargas Excel
     st.markdown("---")
+    st.markdown("### 🚨 Matriz de Usuarios Críticos y Bloqueo Preventivo")
+    st.markdown("Listado de los 15 usuarios asociados a la contingencia financiera con requerimiento de inmovilización de fondos:")
     
-    st.markdown("""
-        <div class="cta-banner">
-            <h3 style="color: white; margin:0 0 8px 0;">🚀 ¿Listo para desplegar este Agente en tu infraestructura Fintech?</h3>
-            <p style="color: #94A3B8; margin:0 0 5px 0; font-size: 15px;">Automatiza la conciliación y blindaje antifraude con las soluciones inteligentes de Sabertec AI.</p>
-            <p style="color: #CBD5E1; margin:0; font-size: 13px;">Contáctanos en <b>gloryrosas@sabertec.agency</b></p>
-        </div>
-    """, unsafe_allow_html=True)
+    st.dataframe(st.session_state.df_usuarios, use_container_width=True)
+
+    # Botones de exportación a Excel para el equipo operativo
+    st.markdown("### 📥 Exportación de Reportes para Mitigación")
     
-    col_d1, col_d2 = st.columns(2)
-    
-    with col_d1:
-        output_excel = io.BytesIO()
-        with pd.ExcelWriter(output_excel, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Fintech_Audit')
-        excel_data = output_excel.getvalue()
-        
+    def convertir_a_excel(df):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Matriz_Riesgo')
+        return output.getvalue()
+
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        excel_data = convertir_a_excel(st.session_state.df_usuarios)
         st.download_button(
-            label="📊 Descargar Bitácora Completa en Excel",
+            label="📥 Descargar Matriz de 15 Usuarios en Bloqueo (Excel)",
             data=excel_data,
-            file_name="fintech_transacciones_audit.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+            file_name="matriz_usuarios_bloqueo_preventivo.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-        
-    with col_d2:
-        # Capa 3: Dictamen Ejecutivo PDF limpio y sin columnas redundantes de estatus
-        pdf_output = io.BytesIO()
-        doc = SimpleDocTemplate(pdf_output, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
-        story = []
-        styles = getSampleStyleSheet()
-        
-        header_style = ParagraphStyle('HeaderStyle', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#475569'), spaceAfter=4)
-        title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=15, textColor=colors.HexColor('#0F172A'), spaceAfter=8, fontName='Helvetica-Bold')
-        section_style = ParagraphStyle('SectionStyle', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor('#0F172A'), spaceBefore=8, spaceAfter=4, fontName='Helvetica-Bold')
-        body_style = ParagraphStyle('BodyStyle', parent=styles['Normal'], fontSize=8.5, textColor=colors.HexColor('#334155'), spaceAfter=4, leading=11)
-        bullet_style = ParagraphStyle('BulletStyle', parent=styles['Normal'], fontSize=8.5, textColor=colors.HexColor('#334155'), leftIndent=12, spaceAfter=3, leading=10)
-        
-        # Cabecera corporativa PDF
-        story.append(Paragraph("Sabertec Fintech - Dictamen de Auditoría Antifraude (Capa 3)", title_style))
-        story.append(Paragraph("DE: Dirección de Riesgos, Cumplimiento & Agente Sabertec AI", header_style))
-        story.append(Paragraph("PARA: Comité de Operaciones Financieras y Dirección General", header_style))
-        story.append(Paragraph(f"ASUNTO: Informe Consolidado de Monitoreo Transaccional y Prevención de Fraude", header_style))
-        story.append(Paragraph("FECHA: 30 de Agosto, 2026", header_style))
-        story.append(Spacer(1, 4))
-        
-        story.append(Paragraph("Resumen Ejecutivo", section_style))
-        story.append(Paragraph(f"El agente autónomo procesó el flujo de {num_transacciones} operaciones, segmentando de forma independiente los casos de revisión por cumplimiento (KYC) y las alertas críticas de fraude potencial.", body_style))
-        story.append(Paragraph(f"Prompt Aplicado: {prompt_demo_fintech}", body_style))
-        story.append(Spacer(1, 4))
-        
-        # --- MATRIZ 1: EN REVISIÓN KYC (Sin columna redundante) ---
-        story.append(Paragraph(f"1. Matriz de Operaciones en Revisión (Cumplimiento KYC) - Total: {rev_count} Transacciones", section_style))
-        
-        table_rev_data = [["ID Transacción", "Canal", "Monto (USD)", "Score Riesgo", "Liquidación"]]
-        for _, row in df_revision.iterrows():
-            table_rev_data.append([
-                str(row["Tx_ID"]),
-                str(row["Canal"]),
-                f"${row['Monto_USD']:,.2f}",
-                str(row["Score_Riesgo"]),
-                str(row["Fecha_Liquidacion"].strftime("%Y-%m-%d"))
-            ])
-            
-        t_rev = Table(table_rev_data, colWidths=[90, 110, 95, 90, 155])
-        t_rev.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#CA8A04')),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0,0), (-1,-1), 8),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-            ('TOPPADDING', (0,0), (-1,-1), 3),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-        ]))
-        story.append(t_rev)
-        story.append(Spacer(1, 8))
-        
-        # --- MATRIZ 2: CRÍTICO FRAUDE (Sin columna redundante) ---
-        story.append(Paragraph(f"2. Matriz de Operaciones Críticas (Bloqueo por Fraude) - Total: {crit_count} Transacciones", section_style))
-        
-        table_crit_data = [["ID Transacción", "Canal", "Monto (USD)", "Score Riesgo", "Liquidación"]]
-        for _, row in df_critico.iterrows():
-            table_crit_data.append([
-                str(row["Tx_ID"]),
-                str(row["Canal"]),
-                f"${row['Monto_USD']:,.2f}",
-                str(row["Score_Riesgo"]),
-                str(row["Fecha_Liquidacion"].strftime("%Y-%m-%d"))
-            ])
-            
-        t_crit = Table(table_crit_data, colWidths=[90, 110, 95, 90, 155])
-        t_crit.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#DC2626')),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0,0), (-1,-1), 8),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
-            ('TOPPADDING', (0,0), (-1,-1), 3),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
-        ]))
-        story.append(t_crit)
-        story.append(Spacer(1, 8))
-        
-        story.append(Paragraph("Hallazgos de Seguridad y Control Financiero:", section_style))
-        story.append(Paragraph("1. Control de Pasarelas: Se detectaron anomalías en los tiempos de respuesta de transacciones vía API Gateway, requiriendo revisión de tokens de acceso.", bullet_style))
-        story.append(Paragraph("2. Exposición de Capital: El monto total bajo riesgo asciende a los valores críticos reportados, requiriendo retención temporal.", bullet_style))
-        
-        story.append(Spacer(1, 4))
-        story.append(Paragraph("Plan de Acción Dictaminado", section_style))
-        story.append(Paragraph("• Acción Inmediata: Ejecución de protocolos de contra-cargo y validación biométrica para los usuarios en revisión KYC.", bullet_style))
-        story.append(Paragraph("• Monitoreo Continuo: Ajuste dinámico de umbrales de fraude mediante el agente Sabertec AI.", bullet_style))
-        
-        story.append(Spacer(1, 4))
-        story.append(Paragraph(f"Dictamen Final: Evaluación completada de forma independiente. Se registran {rev_count} operaciones en revisión y {crit_count} operaciones bloqueadas por fraude potencial.", body_style))
-        
-        doc.build(story)
-        pdf_data = pdf_output.getvalue()
-
+    with col_btn2:
+        excel_pasarelas = convertir_a_excel(st.session_state.df_pasarelas)
         st.download_button(
-            label="📄 Descargar Dictamen Antifraude en PDF",
-            data=pdf_data,
-            file_name="dictamen_fintech_antifraude.pdf",
-            mime="application/pdf",
-            use_container_width=True
+            label="📥 Descargar Reporte de Vulnerabilidades Pasarelas (Excel)",
+            data=excel_pasarelas,
+            file_name="reporte_vulnerabilidades_pasarelas.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
-else:
-    st.info("👉 Haz clic en **'Ejecutar Ciclo Autónomo Fintech'** en la barra lateral para iniciar el análisis del demo.")
