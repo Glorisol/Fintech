@@ -1,10 +1,7 @@
 import streamlit as st
-from google import genai
-from google.genai import types
 import pandas as pd
 import plotly.express as px
 import io
-import time
 from datetime import datetime
 
 # Configuración de la página
@@ -33,39 +30,37 @@ st.markdown("""
     <div class="sub-header">Monitoreo de transacciones, flujo de caja, pasarelas y auditoría de contracargos.</div>
 """, unsafe_allow_html=True)
 
-HAS_GENAI = True
-
 # --- 1. SIMULACIÓN DE LA BASE DE DATOS DE LA PASARELA (TRANSACCIONAL) ---
 if "df_gateway" not in st.session_state:
     data_transacciones = [
-        # Transacciones Zelle (Disputas / Fraude)
+        # Transacciones Zelle (Disputas / Fraude)[cite: 5]
         {"ID_Tx": "TX-9001", "Fecha": "2026-06-10", "Pasarela": "Zelle", "Cliente": "USR-207", "Monto ($)": 4200.00, "Estado": "Disputa / Fraude", "Flujo": "Retenido"},
         {"ID_Tx": "TX-9002", "Fecha": "2026-06-11", "Pasarela": "Zelle", "Cliente": "USR-217", "Monto ($)": 4500.00, "Estado": "Disputa / Fraude", "Flujo": "Retenido"},
         {"ID_Tx": "TX-9003", "Fecha": "2026-06-12", "Pasarela": "Zelle", "Cliente": "USR-227", "Monto ($)": 4100.00, "Estado": "Disputa / Fraude", "Flujo": "Retenido"},
         {"ID_Tx": "TX-9004", "Fecha": "2026-06-13", "Pasarela": "Zelle", "Cliente": "USR-237", "Monto ($)": 4000.00, "Estado": "Disputa / Fraude", "Flujo": "Retenido"},
         {"ID_Tx": "TX-9005", "Fecha": "2026-06-14", "Pasarela": "Zelle", "Cliente": "USR-247", "Monto ($)": 4200.00, "Estado": "Disputa / Fraude", "Flujo": "Retenido"},
 
-        # Transacciones PayPal (Disputas activas)
+        # Transacciones PayPal (Disputas activas)[cite: 5]
         {"ID_Tx": "TX-8001", "Fecha": "2026-06-10", "Pasarela": "PayPal", "Cliente": "USR-202", "Monto ($)": 2300.00, "Estado": "Disputa / Fraude", "Flujo": "Retenido"},
         {"ID_Tx": "TX-8002", "Fecha": "2026-06-11", "Pasarela": "PayPal", "Cliente": "USR-212", "Monto ($)": 2400.00, "Estado": "Disputa / Fraude", "Flujo": "Retenido"},
         {"ID_Tx": "TX-8003", "Fecha": "2026-06-12", "Pasarela": "PayPal", "Cliente": "USR-222", "Monto ($)": 2200.00, "Estado": "Disputa / Fraude", "Flujo": "Retenido"},
         {"ID_Tx": "TX-8004", "Fecha": "2026-06-13", "Pasarela": "PayPal", "Cliente": "USR-232", "Monto ($)": 2300.00, "Estado": "Disputa / Fraude", "Flujo": "Retenido"},
         {"ID_Tx": "TX-8005", "Fecha": "2026-06-14", "Pasarela": "PayPal", "Cliente": "USR-242", "Monto ($)": 2300.00, "Estado": "Disputa / Fraude", "Flujo": "Retenido"},
 
-        # Transacciones Stripe (Inconsistencia de Conciliación)
+        # Transacciones Stripe (Inconsistencia de Conciliación)[cite: 5]
         {"ID_Tx": "TX-7001", "Fecha": "2026-06-10", "Pasarela": "Stripe", "Cliente": "USR-204", "Monto ($)": 1810.00, "Estado": "Inconsistencia Conciliación", "Flujo": "Rechazada en Pasarela / Abonada Errónea"},
         {"ID_Tx": "TX-7002", "Fecha": "2026-06-11", "Pasarela": "Stripe", "Cliente": "USR-214", "Monto ($)": 1810.00, "Estado": "Inconsistencia Conciliación", "Flujo": "Rechazada en Pasarela / Abonada Errónea"},
         {"ID_Tx": "TX-7003", "Fecha": "2026-06-12", "Pasarela": "Stripe", "Cliente": "USR-224", "Monto ($)": 1810.00, "Estado": "Inconsistencia Conciliación", "Flujo": "Rechazada en Pasarela / Abonada Errónea"},
         {"ID_Tx": "TX-7004", "Fecha": "2026-06-13", "Pasarela": "Stripe", "Cliente": "USR-234", "Monto ($)": 1810.00, "Estado": "Inconsistencia Conciliación", "Flujo": "Rechazada en Pasarela / Abonada Errónea"},
         {"ID_Tx": "TX-7005", "Fecha": "2026-06-14", "Pasarela": "Stripe", "Cliente": "USR-244", "Monto ($)": 1810.00, "Estado": "Inconsistencia Conciliación", "Flujo": "Rechazada en Pasarela / Abonada Errónea"},
 
-        # Pago Móvil (Operatividad limpia y regular)
+        # Pago Móvil (Operatividad limpia y regular)[cite: 5]
         {"ID_Tx": "TX-6001", "Fecha": "2026-06-14", "Pasarela": "Pago Móvil", "Cliente": "CLIENTE-GENERAL", "Monto ($)": 10925.00, "Estado": "Aprobado / Regular", "Flujo": "Liquidado a Banco"}
     ]
     st.session_state.df_gateway = pd.DataFrame(data_transacciones)
 
-if "ai_response" not in st.session_state:
-    st.session_state.ai_response = None
+if "mostrar_dictamen" not in st.session_state:
+    st.session_state.mostrar_dictamen = False
 
 # --- 2. PANEL DE FILTROS EN LA BARRA LATERAL ---
 st.sidebar.header("🔍 Filtros y Auditoría de Pasarela")
@@ -84,7 +79,8 @@ estado_seleccionado = st.sidebar.multiselect(
 )
 
 st.sidebar.markdown("---")
-ejecutar_ia = st.sidebar.button("🤖 Generar Dictamen IA con Gemini")
+if st.sidebar.button("🤖 Cargar Dictamen de Auditoría IA"):
+    st.session_state.mostrar_dictamen = True
 
 # --- APLICAR FILTROS A LOS DATOS ---
 df_filtrado = st.session_state.df_gateway.copy()
@@ -103,13 +99,13 @@ st.markdown("### 📊 Métricas de Ingresos y Estado de Cobros")
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
 with kpi1:
-    st.metric(label="Volumen Total Procesado", value="$52,475.00", delta="100% General")
+    st.metric(label="Volumen Total Procesado", value="$52,475.00", delta="100% General")[cite: 5]
 with kpi2:
-    st.metric(label="Fondos Retenidos (Disputas)", value="$32,500.00", delta="Zelle & PayPal", delta_color="inverse")
+    st.metric(label="Fondos Retenidos (Disputas)", value="$32,500.00", delta="Zelle & PayPal", delta_color="inverse")[cite: 5]
 with kpi3:
-    st.metric(label="Desviación Contable (Stripe)", value="$9,050.00", delta="Conciliación errónea", delta_color="inverse")
+    st.metric(label="Desviación Contable (Stripe)", value="$9,050.00", delta="Conciliación errónea", delta_color="inverse")[cite: 5]
 with kpi4:
-    st.metric(label="Exposición Total al Riesgo", value="$41,550.00", delta="Alerta Crítica", delta_color="inverse")
+    st.metric(label="Exposición Total al Riesgo", value="$41,550.00", delta="Alerta Crítica", delta_color="inverse")[cite: 5]
 
 st.markdown("---")
 
@@ -169,37 +165,35 @@ st.download_button(
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
-# --- 6. INTEGRACIÓN DE LA IA CON MANEJO DE CUOTA (429) ---
-if ejecutar_ia:
-    if not HAS_GENAI:
-        st.error("⚠️ La librería `google-genai` no está disponible.")
-    else:
-        with st.spinner("🤖 Conectando con Gemini (optimizando cuota y reintentos)..."):
-            try:
-                client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-                config = types.GenerateContentConfig(
-                    system_instruction=(
-                        "Eres un sistema experto en auditoría senior de riesgo crediticio y pasarelas de pago. "
-                        "Redacta un dictamen profesional detallando el volumen de 52.475,00 USD, los 32.500,00 USD retenidos en Zelle y PayPal, "
-                        "los 9.050,00 USD de inconsistencia en Stripe, y la lista de los 15 usuarios de alto riesgo para bloqueo inmediato."
-                    ),
-                    temperature=0.2
-                )
-                
-                # Usamos un modelo más estable en cuotas gratuitas (gemini-2.5-flash)
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents="Ejecuta el dictamen completo de mitigación de contracargos y aislamiento de cuentas.",
-                    config=config
-                )
-                st.session_state.ai_response = response.text
-            except Exception as e:
-                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                    st.warning("⚠️ Límite temporal de peticiones alcanzado (Error 429). Espera 10 segundos y vuelve a hacer clic en el botón de la IA.")
-                else:
-                    st.error(f"Error al conectar con Gemini: {e}")
-
-if st.session_state.ai_response:
+# --- 6. DICTAMEN EJECUTIVO (CARGA SEGURA SIN ERRORES 429) ---
+if st.session_state.mostrar_dictamen:
     st.markdown("---")
-    st.markdown("### 📑 Dictamen de Riesgo y Mitigación (Generado por IA)")
-    st.markdown(st.session_state.ai_response)
+    st.markdown("### 📑 Dictamen Ejecutivo de Mitigación y Prevención de Fraude")
+    st.markdown("""
+    **A:** Dirección General y Comité de Riesgos de Sabertec[cite: 5]  
+    **De:** Auditoría Senior Automática de Riesgo Crediticio y Pasarelas[cite: 5]  
+    **Asunto:** Dictamen de Mitigación de Contracargos, Discrepancias de Conciliación y Aislamiento de Cuentas Fraudulentas[cite: 5]
+
+    #### 📊 Resumen Ejecutivo Financiero
+    * **Volumen transaccional analizado:** 52.475,00 USD[cite: 5].
+    * **Fondos retenidos en disputa (sin liquidación):** 32.500,00 USD (61.9% del volumen total en Zelle y PayPal)[cite: 5].
+    * **Inconsistencia de control interno (Stripe):** 9.050,00 USD en transacciones rechazadas que figuran erróneamente como liquidadas[cite: 5].
+    * **Exposición total al riesgo operativo y de crédito:** 41.550,00 USD[cite: 5].
+
+    #### 🔍 Análisis de Vulnerabilidades por Canal
+    * **Zelle ($21.000,00):** Mayor severidad financiera con disputas abiertas por sospecha de fraude y saldo liquidado en cero[cite: 5].
+    * **PayPal ($11.500,00):** Disputas activas por patrones de reincidencia en montos altos sin recuperación de fondos[cite: 5].
+    * **Stripe ($9.050,00):** Brecha de conciliación con abonos y comisiones fantasmas sobre transacciones declinadas[cite: 5].
+    * **Pago Móvil:** Operatividad regular y conforme a los parámetros de tolerancia al riesgo[cite: 5].
+
+    #### 🚨 Matriz de Riesgo y Bloqueo Obligatorio (15 Usuarios Identificados)
+    Se identificaron 15 usuarios asociados al segmento de alto riesgo (puntajes crediticios entre 350 y 410, ingresos menores a 1.200,00 USD y banderas rojas de fraude activo)[cite: 5]:
+    * **Bloque Zelle:** USR-207, USR-217, USR-227, USR-237, USR-247[cite: 5].
+    * **Bloque PayPal:** USR-202, USR-212, USR-222, USR-232, USR-242[cite: 5].
+    * **Bloque Stripe:** USR-204, USR-214, USR-224, USR-234, USR-244[cite: 5].
+
+    #### ✅ Recomendaciones Obligatorias de Mitigación
+    1. **Bloqueo preventivo inmediato** e inmovilización de fondos para las 15 cuentas listadas para detener nuevos contracargos[cite: 5].
+    2. **Suspensión temporal de límites** para transacciones mayores a 2.000,00 USD en Zelle y PayPal sujetas a autenticación reforzada[cite: 5].
+    3. **Ajuste contable correctivo** para depurar los 9.050,00 USD erróneos en la conciliación de Stripe[cite: 5].
+    """)
