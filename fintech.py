@@ -4,6 +4,7 @@ from google.genai import types
 import pandas as pd
 import plotly.express as px
 import io
+import time
 from datetime import datetime
 
 # Configuración de la página
@@ -58,7 +59,7 @@ if "df_gateway" not in st.session_state:
         {"ID_Tx": "TX-7004", "Fecha": "2026-06-13", "Pasarela": "Stripe", "Cliente": "USR-234", "Monto ($)": 1810.00, "Estado": "Inconsistencia Conciliación", "Flujo": "Rechazada en Pasarela / Abonada Errónea"},
         {"ID_Tx": "TX-7005", "Fecha": "2026-06-14", "Pasarela": "Stripe", "Cliente": "USR-244", "Monto ($)": 1810.00, "Estado": "Inconsistencia Conciliación", "Flujo": "Rechazada en Pasarela / Abonada Errónea"},
 
-        # Pago Móvil (Operatividad limpia y regular)[cite: 7]
+        # Pago Móvil (Operatividad limpia y regular)
         {"ID_Tx": "TX-6001", "Fecha": "2026-06-14", "Pasarela": "Pago Móvil", "Cliente": "CLIENTE-GENERAL", "Monto ($)": 10925.00, "Estado": "Aprobado / Regular", "Flujo": "Liquidado a Banco"}
     ]
     st.session_state.df_gateway = pd.DataFrame(data_transacciones)
@@ -66,7 +67,7 @@ if "df_gateway" not in st.session_state:
 if "ai_response" not in st.session_state:
     st.session_state.ai_response = None
 
-# --- 2. PANEL DE FILTROS EN LA BARRA LATERAL (Auditoría Rápida) ---
+# --- 2. PANEL DE FILTROS EN LA BARRA LATERAL ---
 st.sidebar.header("🔍 Filtros y Auditoría de Pasarela")
 busqueda_cliente = st.sidebar.text_input("Buscar por ID de Cliente o Transacción:", value="")
 
@@ -102,13 +103,13 @@ st.markdown("### 📊 Métricas de Ingresos y Estado de Cobros")
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
 with kpi1:
-    st.metric(label="Volumen Total Procesado", value="$52,475.00", delta="100% General")[cite: 7]
+    st.metric(label="Volumen Total Procesado", value="$52,475.00", delta="100% General")
 with kpi2:
-    st.metric(label="Fondos Retenidos (Disputas)", value="$32,500.00", delta="Zelle & PayPal", delta_color="inverse")[cite: 7]
+    st.metric(label="Fondos Retenidos (Disputas)", value="$32,500.00", delta="Zelle & PayPal", delta_color="inverse")
 with kpi3:
-    st.metric(label="Desviación Contable (Stripe)", value="$9,050.00", delta="Conciliación errónea", delta_color="inverse")[cite: 7]
+    st.metric(label="Desviación Contable (Stripe)", value="$9,050.00", delta="Conciliación errónea", delta_color="inverse")
 with kpi4:
-    st.metric(label="Exposición Total al Riesgo", value="$41,550.00", delta="Alerta Crítica", delta_color="inverse")[cite: 7]
+    st.metric(label="Exposición Total al Riesgo", value="$41,550.00", delta="Alerta Crítica", delta_color="inverse")
 
 st.markdown("---")
 
@@ -153,10 +154,9 @@ st.markdown("---")
 
 # --- 5. TABLA EN TIEMPO REAL CON FILTROS Y BÚSQUEDA ---
 st.markdown("### 📋 Registro de Transacciones en Tiempo Real")
-st.markdown("Vista detallada del estado de las facturas, pasarelas y control de flujo de dinero según tus filtros aplicados.")
 st.dataframe(df_filtrado, use_container_width=True)
 
-# Exportar a Excel los datos filtrados
+# Exportar a Excel
 output = io.BytesIO()
 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
     df_filtrado.to_excel(writer, index=False, sheet_name='Transacciones_Filtradas')
@@ -169,27 +169,35 @@ st.download_button(
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
 
-# --- 6. INTEGRACIÓN DE LA IA (DICTAMEN CORPORATIVO) ---
+# --- 6. INTEGRACIÓN DE LA IA CON MANEJO DE CUOTA (429) ---
 if ejecutar_ia:
     if not HAS_GENAI:
         st.error("⚠️ La librería `google-genai` no está disponible.")
     else:
-        with st.spinner("🤖 Generando dictamen ejecutivo formal basado en el documento adjunto..."):
+        with st.spinner("🤖 Conectando con Gemini (optimizando cuota y reintentos)..."):
             try:
                 client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
                 config = types.GenerateContentConfig(
                     system_instruction=(
                         "Eres un sistema experto en auditoría senior de riesgo crediticio y pasarelas de pago. "
                         "Redacta un dictamen profesional detallando el volumen de 52.475,00 USD, los 32.500,00 USD retenidos en Zelle y PayPal, "
-                        "los 9.050,00 USD de inconsistencia en Stripe, y la lista de los 15 usuarios de alto riesgo para bloqueo inmediato[cite: 7]."
+                        "los 9.050,00 USD de inconsistencia en Stripe, y la lista de los 15 usuarios de alto riesgo para bloqueo inmediato."
                     ),
                     temperature=0.2
                 )
-                chat = client.chats.create(model="gemini-3.6-flash", config=config)
-                response = chat.send_message("Ejecuta el dictamen completo de mitigación de contracargos y aislamiento de cuentas.")
+                
+                # Usamos un modelo más estable en cuotas gratuitas (gemini-2.5-flash)
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents="Ejecuta el dictamen completo de mitigación de contracargos y aislamiento de cuentas.",
+                    config=config
+                )
                 st.session_state.ai_response = response.text
             except Exception as e:
-                st.error(f"Error al conectar con Gemini: {e}")
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                    st.warning("⚠️ Límite temporal de peticiones alcanzado (Error 429). Espera 10 segundos y vuelve a hacer clic en el botón de la IA.")
+                else:
+                    st.error(f"Error al conectar con Gemini: {e}")
 
 if st.session_state.ai_response:
     st.markdown("---")
